@@ -1,0 +1,10 @@
+[package]
+name = "rs_ascii"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[[bin]]
+name = "rs_ascii"
+path = "main.rs"
