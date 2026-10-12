@@ -1,0 +1,10 @@
+[package]
+name = "vo-demo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-io.workspace = true
+vision-viz.workspace = true
+vision-math.workspace = true
+vision-slam.workspace = true

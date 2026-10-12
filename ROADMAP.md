@@ -1,4 +1,4 @@
-# rs_vision — Computer Vision Research Platform Roadmap
+# vision-rs — Computer Vision Research Platform Roadmap
 
 A plan for growing this repo from a single-file V4L2 ASCII webcam demo into a
 workspace for researching perception and robotics CV algorithms **without
@@ -70,7 +70,7 @@ binaries. The current `main.rs` becomes one app; its V4L2 code moves into an I/O
 crate.
 
 ```
-rs_vision/
+vision-rs/
 ├── Cargo.toml                # [workspace]
 ├── crates/
 │   ├── vision-core/          # Frame, PixelFormat, color conversion (YUYV→gray/RGB),

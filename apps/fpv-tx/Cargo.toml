@@ -1,0 +1,8 @@
+[package]
+name = "fpv-tx"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-io.workspace = true
+vision-codec.workspace = true

@@ -1,0 +1,8 @@
+[package]
+name = "vision-flow"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-core.workspace = true
+vision-features.workspace = true

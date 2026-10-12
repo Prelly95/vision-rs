@@ -1,0 +1,8 @@
+[package]
+name = "ascii-cam"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-io.workspace = true
+vision-viz.workspace = true

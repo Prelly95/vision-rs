@@ -1,0 +1,11 @@
+[package]
+name = "vision-slam"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-core.workspace = true
+vision-features.workspace = true
+vision-flow.workspace = true
+vision-math.workspace = true
+vision-sfm.workspace = true

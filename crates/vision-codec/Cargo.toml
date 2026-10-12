@@ -1,0 +1,8 @@
+[package]
+name = "vision-codec"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-core.workspace = true
+vision-flow.workspace = true

@@ -1,0 +1,8 @@
+[package]
+name = "vision-math"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Math backend is deliberately undecided — see ROADMAP.md "Immediate next steps"
+# #2 (nalgebra vs. from-scratch). Add it here once chosen.

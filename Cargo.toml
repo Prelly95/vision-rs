@@ -1,10 +1,25 @@
-[package]
-name = "rs_ascii"
+# vision-rs — Cargo workspace.
+#
+# Shared library crates live under crates/, thin binaries under apps/. The
+# dependency flow is core <- io / viz <- features / flow <- sfm / slam, with
+# codec and math off to the side. See ROADMAP.md §2 for the full map.
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-
-[[bin]]
-name = "rs_ascii"
-path = "main.rs"
+# Internal crates referenced by path, declared once here so each member can pull
+# them in with `vision-foo.workspace = true`.
+[workspace.dependencies]
+vision-core = { path = "crates/vision-core" }
+vision-io = { path = "crates/vision-io" }
+vision-viz = { path = "crates/vision-viz" }
+vision-math = { path = "crates/vision-math" }
+vision-features = { path = "crates/vision-features" }
+vision-flow = { path = "crates/vision-flow" }
+vision-sfm = { path = "crates/vision-sfm" }
+vision-slam = { path = "crates/vision-slam" }
+vision-codec = { path = "crates/vision-codec" }
