@@ -1,7 +1,19 @@
+// window-cam — live webcam viewer in a window, via the vision-app harness.
+//
+// The webcam counterpart of video-player: same harness and Passthrough
+// processor, but the frame source is V4l2Capture instead of a file. Both
+// implement vision_io::FrameSource, so the harness treats them identically --
+// the only thing that changes is which source you hand to `run`. (A webcam has
+// no inherent frame rate, so FrameSource::target_fps is None for it and the
+// harness paces at its default; that's why there's no `fps()` to print here.)
+//
 // Run:  cargo run --release -p window-cam
 
+use std::io;
+
+use vision_core::{Blend, Overlay, SobelEdges};
 use vision_io::V4l2Capture;
-use vision_viz::{Display, WindowDisplay};
+use vision_app::Passthrough;
 
 fn main() {
     if let Err(e) = run() {
@@ -10,8 +22,8 @@ fn main() {
     }
 }
 
-fn run() -> std::io::Result<()> {
-    let mut capture = V4l2Capture::open("/dev/video0", 640, 480)?;
+fn run() -> io::Result<()> {
+    let capture = V4l2Capture::open("/dev/video0", 640, 480)?;
     eprintln!(
         "negotiated format: {}x{}, bytesperline={}",
         capture.width(),
@@ -19,20 +31,8 @@ fn run() -> std::io::Result<()> {
         capture.bytes_per_line()
     );
 
-    let mut display = WindowDisplay::new(
-        "Window Cam",
-        capture.width() as usize,
-        capture.height() as usize,
-    )?;
-
-    // Capture loop, unthrottled: as fast as camera + display allow. Ctrl+C to
-    // exit; Drop on `capture` stops streaming and releases buffers.
-    loop {
-        let captured = capture.next_frame()?;
-        if display.show(&captured.frame())?.is_break() {
-            break;
-        }
-        // `captured` drops here -> buffer is re-queued to the driver.
-    }
-    Ok(())
+    // Sobel edges composited over the live video: `Lighten` lets the bright
+    // edge lines show through while the rest of the frame passes untouched.
+    let processor = Overlay::new(SobelEdges::default(), Blend::Lighten);
+    vision_app::run(capture, processor, "Window Cam")
 }

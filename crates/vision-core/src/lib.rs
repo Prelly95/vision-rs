@@ -6,6 +6,16 @@
 //! per-pixel primitives reused by features, flow, and SfM. Nothing here knows
 //! about capture devices or renderers; those depend on this, never the reverse.
 
+pub mod canvas;
+pub mod edges;
 pub mod frame;
+pub mod overlay;
+pub mod plane;
+pub mod process;
 
+pub use canvas::Canvas;
+pub use edges::SobelEdges;
 pub use frame::{Frame, PixelFormat, yuv_to_rgb};
+pub use overlay::{Blend, Overlay};
+pub use plane::LumaPlane;
+pub use process::Processor;

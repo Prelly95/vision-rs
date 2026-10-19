@@ -16,6 +16,8 @@ use std::os::raw::{c_char, c_int, c_void};
 
 use vision_core::{Frame, PixelFormat};
 
+use crate::source::FrameSource;
+
 // ---------------------------------------------------------------------
 // Raw libc bindings. We declare only the pieces we need. ioctl's real
 // signature is variadic (`int ioctl(int, unsigned long, ...)`), but on
@@ -189,6 +191,12 @@ pub struct V4l2Capture {
     height: u32,
     bytes_per_line: u32,
     buffers: Vec<MappedBuffer>,
+    /// Index of the buffer currently dequeued and lent out as a `Frame`, if any.
+    /// It stays out of the driver's rotation until the next [`next_frame`] call
+    /// re-queues it. `None` before the first frame.
+    ///
+    /// [`next_frame`]: V4l2Capture::next_frame
+    current: Option<u32>,
 }
 
 impl V4l2Capture {
@@ -209,7 +217,8 @@ impl V4l2Capture {
 
         // From here on, any early return must not leak the fd. Build the device
         // first, then run setup through it so Drop handles cleanup on failure.
-        let mut dev = V4l2Capture { fd, width: 0, height: 0, bytes_per_line: 0, buffers: Vec::new() };
+        let mut dev =
+            V4l2Capture { fd, width: 0, height: 0, bytes_per_line: 0, buffers: Vec::new(), current: None };
         dev.configure(width, height)?;
         Ok(dev)
     }
@@ -296,12 +305,19 @@ impl V4l2Capture {
     }
 
     /// Block until the driver reports a filled buffer, then return it as a
-    /// [`CapturedFrame`] guard. The buffer is held out of the driver's rotation
-    /// for exactly as long as the guard lives; dropping it (or the `Frame` it
-    /// lends out) re-queues the buffer for reuse. Because the guard borrows the
-    /// capture mutably, you can only have one frame in flight at a time -- which
-    /// is exactly the lifetime the mmap buffer is safe to read for.
-    pub fn next_frame(&mut self) -> io::Result<CapturedFrame<'_>> {
+    /// [`Frame`]. The returned frame borrows the capture, so it stays valid until
+    /// the next `next_frame` call -- which first re-queues the previous buffer to
+    /// the driver, then dequeues the next. That borrow is what limits you to one
+    /// frame in flight, exactly the window the mmap buffer is safe to read for.
+    ///
+    /// Always `Some` for a live device; the `Option` exists to satisfy
+    /// [`FrameSource`], whose file-backed implementors return `None` at EOF.
+    pub fn next_frame(&mut self) -> io::Result<Option<Frame<'_>>> {
+        // Hand the previously-lent buffer back to the driver so it can refill it.
+        if let Some(index) = self.current.take() {
+            self.queue_buffer(index)?;
+        }
+
         let mut buf = V4l2Buffer::default();
         buf.type_ = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
@@ -309,8 +325,43 @@ impl V4l2Capture {
             unsafe { ioctl(self.fd, vidioc_dqbuf(), &mut buf as *mut _ as *mut c_void) },
             "VIDIOC_DQBUF",
         )?;
-        Ok(CapturedFrame { capture: self, index: buf.index })
+        self.current = Some(buf.index);
+
+        let mb = &self.buffers[buf.index as usize];
+        // Safety: the kernel told us (via DQBUF) that this buffer is filled and
+        // ours to read until we QBUF it back, which only happens on the next
+        // call -- after the borrow handed out here has ended.
+        let data = unsafe { std::slice::from_raw_parts(mb.ptr, mb.len) };
+        Ok(Some(Frame {
+            width: self.width,
+            height: self.height,
+            bytes_per_line: self.bytes_per_line,
+            format: PixelFormat::Yuyv,
+            data,
+        }))
     }
+
+    /// Hand buffer `index` back to the driver (VIDIOC_QBUF) so it may refill it.
+    fn queue_buffer(&self, index: u32) -> io::Result<()> {
+        let mut buf = V4l2Buffer::default();
+        buf.type_ = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index = index;
+        check(
+            unsafe { ioctl(self.fd, vidioc_qbuf(), &mut buf as *mut _ as *mut c_void) },
+            "VIDIOC_QBUF",
+        )?;
+        Ok(())
+    }
+}
+
+impl FrameSource for V4l2Capture {
+    fn next_frame(&mut self) -> io::Result<Option<Frame<'_>>> {
+        V4l2Capture::next_frame(self)
+    }
+    fn width(&self) -> u32 { self.width }
+    fn height(&self) -> u32 { self.height }
+    // target_fps: a live webcam has no inherent playback rate -> None (default).
 }
 
 impl Drop for V4l2Capture {
@@ -327,43 +378,3 @@ impl Drop for V4l2Capture {
     }
 }
 
-/// A dequeued capture buffer, borrowed from its [`V4l2Capture`]. Call
-/// [`frame`](Self::frame) to view it as a [`Frame`]. When this guard is dropped
-/// the underlying buffer is handed back to the driver (VIDIOC_QBUF), so hold it
-/// only as long as you're reading the frame.
-pub struct CapturedFrame<'a> {
-    capture: &'a mut V4l2Capture,
-    index: u32,
-}
-
-impl CapturedFrame<'_> {
-    /// Borrow this captured buffer as a [`Frame`]. Safe to read until the guard
-    /// is dropped.
-    pub fn frame(&self) -> Frame<'_> {
-        let mb = &self.capture.buffers[self.index as usize];
-        // Safety: the kernel told us (via DQBUF) that this buffer is filled and
-        // ours to read until we QBUF it back, which only happens on drop -- after
-        // any borrow handed out here has already ended.
-        let data = unsafe { std::slice::from_raw_parts(mb.ptr, mb.len) };
-        Frame {
-            width: self.capture.width,
-            height: self.capture.height,
-            bytes_per_line: self.capture.bytes_per_line,
-            format: PixelFormat::Yuyv,
-            data,
-        }
-    }
-}
-
-impl Drop for CapturedFrame<'_> {
-    fn drop(&mut self) {
-        // Give the buffer back to the driver so it can refill it.
-        let mut buf = V4l2Buffer::default();
-        buf.type_ = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        buf.index = self.index;
-        unsafe {
-            ioctl(self.capture.fd, vidioc_qbuf(), &mut buf as *mut _ as *mut c_void);
-        }
-    }
-}

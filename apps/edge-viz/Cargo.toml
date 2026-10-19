@@ -1,8 +1,9 @@
 [package]
-name = "vision-viz"
+name = "edge-viz"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 vision-core.workspace = true
-minifb = "0.29"
+vision-io.workspace = true
+vision-app.workspace = true

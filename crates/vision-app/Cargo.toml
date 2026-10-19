@@ -1,0 +1,9 @@
+[package]
+name = "vision-app"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-core.workspace = true
+vision-io.workspace = true
+minifb = "0.29"

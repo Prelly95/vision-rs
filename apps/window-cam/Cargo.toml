@@ -5,4 +5,5 @@ edition.workspace = true
 
 [dependencies]
 vision-io.workspace = true
-vision-viz.workspace = true
+vision-app.workspace = true
+vision-core.workspace = true

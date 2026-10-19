@@ -4,5 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-vision-viz.workspace = true
+vision-app.workspace = true
 vision-codec.workspace = true

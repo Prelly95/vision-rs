@@ -14,6 +14,12 @@
 pub enum PixelFormat {
     /// Packed YUV 4:2:2, two pixels per four bytes as `[Y0, U, Y1, V]`.
     Yuyv,
+    /// Packed 8-bit RGB, three bytes per pixel as `[R, G, B]`, rows laid out
+    /// back-to-back (padding, if any, lives in `bytes_per_line`). Sources that
+    /// have already decoded to RGB -- e.g. a video file whose YUV frames were
+    /// converted once on the way in -- hand frames out in this format so the
+    /// display side needs no further conversion.
+    Rgb24,
 }
 
 /// A borrowed view of one captured frame. The byte slice typically points at a
@@ -39,7 +45,20 @@ impl Frame<'_> {
     pub fn sample_rgb(&self, x: u32, y: u32) -> [u8; 3] {
         match self.format {
             PixelFormat::Yuyv => self.sample_yuyv(x, y),
+            PixelFormat::Rgb24 => self.sample_rgb24(x, y),
         }
+    }
+
+    /// RGB24 is already in the output format: read the three bytes for this
+    /// pixel directly. Out-of-range reads fall back to 0 (black) so a
+    /// short/garbled buffer can't panic, matching the YUYV path.
+    fn sample_rgb24(&self, x: u32, y: u32) -> [u8; 3] {
+        let base = (y * self.bytes_per_line) as usize + x as usize * 3;
+        [
+            self.data.get(base).copied().unwrap_or(0),
+            self.data.get(base + 1).copied().unwrap_or(0),
+            self.data.get(base + 2).copied().unwrap_or(0),
+        ]
     }
 
     /// YUYV packs two pixels into four bytes as `[Y0, U, Y1, V]`: both pixels of a

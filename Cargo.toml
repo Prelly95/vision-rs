@@ -16,7 +16,7 @@ edition = "2024"
 [workspace.dependencies]
 vision-core = { path = "crates/vision-core" }
 vision-io = { path = "crates/vision-io" }
-vision-viz = { path = "crates/vision-viz" }
+vision-app = { path = "crates/vision-app" }
 vision-math = { path = "crates/vision-math" }
 vision-features = { path = "crates/vision-features" }
 vision-flow = { path = "crates/vision-flow" }

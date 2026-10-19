@@ -5,15 +5,15 @@
 // wires one frame source to one sink and pumps frames between them; the two
 // halves meet only at `vision_core::Frame`:
 //   * capture  -- vision-io::V4l2Capture produces frames
-//   * display  -- vision-viz::TerminalDisplay presents them
+//   * display  -- vision-app::TerminalDisplay presents them
 //
 // Swap in a different `Display` (a real window, say) without touching capture, or
 // a different frame source without touching the renderer.
 //
 // Run:  cargo run --release -p ascii-cam
 
+use vision_app::{Display, TerminalDisplay};
 use vision_io::V4l2Capture;
-use vision_viz::{Display, TerminalDisplay};
 
 fn main() {
     if let Err(e) = run() {
@@ -37,12 +37,11 @@ fn run() -> std::io::Result<()> {
 
     // Capture loop, unthrottled: as fast as camera + display allow. Ctrl+C to
     // exit; Drop on `capture` stops streaming and releases buffers.
-    loop {
-        let captured = capture.next_frame()?;
-        if display.show(&captured.frame())?.is_break() {
+    while let Some(frame) = capture.next_frame()? {
+        if display.show(&frame)?.is_break() {
             break;
         }
-        // `captured` drops here -> buffer is re-queued to the driver.
+        // The buffer stays held until the next next_frame() call re-queues it.
     }
     Ok(())
 }

@@ -51,15 +51,31 @@ and a sink trait, then add real renderers.
   overlays). Single-step over recorded frames is how algorithms actually get
   debugged.
 
-### One dependency decision
+### Dependency policy
 
-The "no OpenCV" instinct is right for the *CV algorithms* — that's where the
-learning is. But linear algebra (SVD, eigensolvers, SE(3)/SO(3), least squares)
-is a different rabbit hole, and SfM/SLAM lean on it heavily. Recommendation: use
-[`nalgebra`](https://crates.io/crates/nalgebra) as the math substrate and
-reserve from-scratch discipline for the vision itself. Add
-[`rayon`](https://crates.io/crates/rayon) too — nearly all of this is
-embarrassingly parallel per-pixel / per-feature.
+The "no OpenCV / from-scratch" rule is about the **computer-vision algorithms
+themselves** — gradients, pyramids, feature detectors, optical flow, two-view
+geometry, bundle adjustment, the SLAM backend. That's where the learning is, so
+that's where we own every line. It is **not** a blanket ban on dependencies.
+
+Two categories are explicitly exempt:
+
+- **Development & UI niceties** — windowing, video-file decoding, image I/O,
+  logging, CLI parsing, async runtimes for networking. These are plumbing, not
+  the research. Use well-supported crates and spend the effort budget on the
+  vision instead. Already in use: [`minifb`](https://crates.io/crates/minifb)
+  for the window, [`ffmpeg-next`](https://crates.io/crates/ffmpeg-next) for
+  video-file decode. (`tokio` would belong here too — but only where async
+  genuinely fits, i.e. the FPV networking crate, not a single render/input loop.)
+- **Linear-algebra substrate** — SVD, eigensolvers, SE(3)/SO(3), least squares.
+  SfM/SLAM lean on these heavily and they're a different rabbit hole from vision.
+  Use [`nalgebra`](https://crates.io/crates/nalgebra) and build the geometry on
+  top of it. Add [`rayon`](https://crates.io/crates/rayon) too — nearly all of
+  this is embarrassingly parallel per-pixel / per-feature.
+
+Rule of thumb: if a crate would do the *perception* for you (feature matching, a
+flow implementation, a SLAM backend), write it yourself. If it's a window, a
+codec, a matrix factorization, or a socket, pull it in.
 
 ---
 
@@ -74,11 +90,15 @@ vision-rs/
 ├── Cargo.toml                # [workspace]
 ├── crates/
 │   ├── vision-core/          # Frame, PixelFormat, color conversion (YUYV→gray/RGB),
-│   │                         #   image buffers, pyramids, gradients (Sobel), warping
-│   ├── vision-io/            # V4L2 capture (current FFI), record/replay,
-│   │                         #   PPM/PNG, dataset loaders (TUM/KITTI/EuRoC)
-│   ├── vision-viz/           # window (minifb), terminal (ascii + half-block color),
-│   │                         #   overlay drawing, colormaps
+│   │                         #   Canvas + draw primitives, Processor trait, Sobel;
+│   │                         #   (todo) pyramids, more gradients, warping
+│   ├── vision-io/            # FrameSource trait; V4L2 capture (FFI) + video-file
+│   │                         #   decode (FFmpeg); (todo) record/replay, PPM/PNG,
+│   │                         #   dataset loaders (TUM/KITTI/EuRoC)
+│   ├── vision-app/           # presentation layer: window (minifb) + terminal
+│   │                         #   (ascii half-block) sinks, and the per-frame
+│   │                         #   harness (source→processor→display, transport
+│   │                         #   controls); (todo) overlay colormaps
 │   ├── vision-math/          # SE3/SO3, quaternions, RANSAC harness, solvers
 │   │                         #   (wraps nalgebra; own geometry on top)
 │   ├── vision-features/      # Harris/Shi-Tomasi, FAST, BRIEF/ORB, matching
@@ -87,7 +107,10 @@ vision-rs/
 │   ├── vision-slam/          # VO → SLAM
 │   └── vision-codec/         # compression + transport for FPV
 ├── apps/
-│   ├── ascii-cam/            # today's demo, ported onto vision-io + vision-viz
+│   ├── ascii-cam/            # webcam → terminal (vision-io + vision-app)
+│   ├── window-cam/           # webcam → window, via the harness
+│   ├── video-player/         # video file → window (Passthrough), transport controls
+│   ├── edge-viz/             # video file → Sobel edges, the reference Processor demo
 │   ├── flow-viz/
 │   ├── vo-demo/
 │   └── fpv-tx / fpv-rx/
@@ -95,10 +118,12 @@ vision-rs/
 ```
 
 The crate ordering mirrors the dependency flow:
-`core` ← `io` / `viz` ← `features` / `flow` ← `sfm` / `slam`. Build `core` +
-`io` + `viz` first; everything else is downstream and testable against
+`core` ← `io` / `app` ← `features` / `flow` ← `sfm` / `slam`. Build `core` +
+`io` + `app` first; everything else is downstream and testable against
 recorded / dataset input. Put experiments in `examples/` within each crate
-before promoting them to `apps/`.
+before promoting them to `apps/`. (`vision-app` bridges io + core and owns the
+sinks + harness; it was originally planned as a separate `vision-viz` sink crate
+but folded together once the harness and the displays became one layer.)
 
 ---
 
