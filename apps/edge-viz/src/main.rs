@@ -9,7 +9,7 @@
 
 use std::io;
 
-use vision_core::SobelEdges;
+use vision_core::{SobelEdges, Stats};
 use vision_io::VideoFile;
 
 fn main() {
@@ -37,5 +37,9 @@ fn run() -> io::Result<()> {
         video.fps()
     );
 
-    vision_app::run(video, SobelEdges, &format!("Edge Viz — {path}"))
+    vision_app::run(
+        video,
+        Stats::new(SobelEdges::default()),
+        &format!("Edge Viz — {path}"),
+    )
 }

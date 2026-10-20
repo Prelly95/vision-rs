@@ -14,12 +14,10 @@
 pub enum PixelFormat {
     /// Packed YUV 4:2:2, two pixels per four bytes as `[Y0, U, Y1, V]`.
     Yuyv,
-    /// Packed 8-bit RGB, three bytes per pixel as `[R, G, B]`, rows laid out
-    /// back-to-back (padding, if any, lives in `bytes_per_line`). Sources that
-    /// have already decoded to RGB -- e.g. a video file whose YUV frames were
-    /// converted once on the way in -- hand frames out in this format so the
-    /// display side needs no further conversion.
+    /// Packed 8-bit RGB, three bytes per pixel as `[R, G, B]`
     Rgb24,
+    /// 8-bit grayscale, one byte per pixel
+    Gray8,
 }
 
 /// A borrowed view of one captured frame. The byte slice typically points at a
@@ -46,7 +44,19 @@ impl Frame<'_> {
         match self.format {
             PixelFormat::Yuyv => self.sample_yuyv(x, y),
             PixelFormat::Rgb24 => self.sample_rgb24(x, y),
+            PixelFormat::Gray8 => self.sample_gray8(x, y),
         }
+    }
+
+    /// Grayscale: replicate the one luma byte into all three channels. Out-of-
+    /// range reads fall back to 0 (black), matching the other paths.
+    fn sample_gray8(&self, x: u32, y: u32) -> [u8; 3] {
+        let g = self
+            .data
+            .get((y * self.bytes_per_line) as usize + x as usize)
+            .copied()
+            .unwrap_or(0);
+        [g, g, g]
     }
 
     /// RGB24 is already in the output format: read the three bytes for this

@@ -10,6 +10,7 @@
 //! luma, not colour -- so this, not `Frame`, is what they read.
 
 use crate::Frame;
+use crate::PixelFormat;
 
 /// An owned, tightly packed 8-bit grayscale image: `width * height` bytes, one
 /// per pixel, rows back-to-back. Create once and reuse across frames -- the
@@ -75,7 +76,7 @@ impl Frame<'_> {
         match self.format {
             // YUYV: `[Y0, U, Y1, V]` per pixel pair, so the luma byte for pixel x
             // sits at `2*x` within the row -- already what we want, no colour math.
-            crate::PixelFormat::Yuyv => {
+            PixelFormat::Yuyv => {
                 for y in 0..h {
                     let row = y * stride;
                     let out_row = y * w;
@@ -84,9 +85,19 @@ impl Frame<'_> {
                     }
                 }
             }
+            // Gray8: the byte already is the luma.
+            PixelFormat::Gray8 => {
+                for y in 0..h {
+                    let row = y * stride;
+                    let out_row = y * w;
+                    for x in 0..w {
+                        dst[out_row + x] = src.get(row + x).copied().unwrap_or(0);
+                    }
+                }
+            }
             // RGB24: collapse each `[R, G, B]` to Rec.601 luma, matching the
             // weights `edges::luma` used when it sampled through `sample_rgb`.
-            crate::PixelFormat::Rgb24 => {
+            PixelFormat::Rgb24 => {
                 for y in 0..h {
                     let row = y * stride;
                     let out_row = y * w;

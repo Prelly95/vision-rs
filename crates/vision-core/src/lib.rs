@@ -10,12 +10,16 @@ pub mod canvas;
 pub mod edges;
 pub mod frame;
 pub mod overlay;
+pub mod passthrough;
 pub mod plane;
 pub mod process;
+pub mod stats;
 
 pub use canvas::Canvas;
 pub use edges::SobelEdges;
 pub use frame::{Frame, PixelFormat, yuv_to_rgb};
 pub use overlay::{Blend, Overlay};
+pub use passthrough::Passthrough;
 pub use plane::LumaPlane;
 pub use process::Processor;
+pub use stats::Stats;

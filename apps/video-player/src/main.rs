@@ -13,7 +13,7 @@
 
 use std::io;
 
-use vision_app::Passthrough;
+use vision_core::Stats;
 use vision_io::VideoFile;
 
 fn main() {
@@ -42,5 +42,5 @@ fn run() -> io::Result<()> {
         video.fps()
     );
 
-    vision_app::run(video, Passthrough, &format!("Video Player — {path}"))
+    vision_app::run(video, Stats::passthrough(), &format!("Video Player — {path}"))
 }

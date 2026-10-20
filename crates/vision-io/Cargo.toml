@@ -7,10 +7,10 @@ edition.workspace = true
 vision-core.workspace = true
 
 # Video-file decoding (ROADMAP §1 "Record & replay" / external-camera input).
-# Bindings to the system FFmpeg 6.1 libav* libraries. Default features are off
-# and only `codec` + `format` are enabled on purpose: this machine ships the dev
-# packages for libavcodec/libavformat/libavutil but NOT libswscale/libavfilter/
-# libavdevice, so pulling in the default feature set would fail to build. We do
-# the YUV->RGB conversion ourselves (vision_core::yuv_to_rgb) instead of leaning
-# on swscale, which keeps the dependency surface to just those three libs.
-ffmpeg-next = { version = "6.1", default-features = false, features = ["codec", "format"] }
+# Bindings to the system FFmpeg libav* libraries. Default features are off; only
+# what we use is enabled: `codec` + `format` for demux/decode, `software-scaling`
+# (libswscale) to convert any decoded pixel format to RGB24.
+ffmpeg-next = { version = "9.0", default-features = false, features = ["codec", "format", "software-scaling"] }
+
+# PNG decoding for image-sequence datasets (image I/O is plumbing, not research).
+png = "0.17"

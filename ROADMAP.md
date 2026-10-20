@@ -35,6 +35,17 @@ and a sink trait, then add real renderers.
 - **Colormaps**: HSV flow colorizer and a jet/turbo colormap for dense scalar
   fields (depth, flow magnitude, disparity).
 
+- **Better frame sampling.** Pixel access today is per-pixel
+  (`Frame::sample_rgb` / `Canvas::pixel` / `set_pixel`), each call bounds-checking
+  and re-matching the pixel format. Fine for demos, but it dominates the cost of
+  passes like `Overlay` and `blit_frame`. Worth doing:
+  - Row-wise access: hoist the format `match` out of the loop and work on row
+    slices (`chunks_exact`) so the compiler can vectorize.
+  - Subpixel sampling (bilinear, with border handling) — required by optical
+    flow, image pyramids, and warping, none of which land on integer pixels.
+  - Use the stats HUD's process-time number to confirm what actually matters
+    before optimizing.
+
 ### Workflow (what makes research tractable)
 
 - **Record & replay.** Dump raw frames + timestamps to a file and read them

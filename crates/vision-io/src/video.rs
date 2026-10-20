@@ -9,16 +9,14 @@
 //! run, so a flow/VO/SLAM backend can be debugged against deterministic input
 //! instead of live-camera nondeterminism.
 //!
-//! ## Why we convert to RGB ourselves
+//! ## Pixel format
 //!
-//! FFmpeg hands back frames in whatever pixel format the codec uses -- almost
-//! always planar YUV (`yuv420p` for H.264/HEVC from consumer cameras). The usual
-//! way to normalize that is libswscale, but this machine ships libavcodec/format/
-//! util *without* the swscale dev package. Rather than add that dependency, we
-//! convert each decoded YUV frame to packed RGB ourselves using the same
-//! [`yuv_to_rgb`] the rest of the codebase already uses, and advertise the result
-//! as [`PixelFormat::Rgb24`]. The conversion runs once per frame on the way in;
-//! the display side then samples RGB directly.
+//! FFmpeg hands back frames in whatever pixel format the codec uses -- usually
+//! planar YUV (`yuv420p` for H.264/HEVC from consumer cameras), but also
+//! `yuvj420p`, 10-bit, and so on. We normalise every one of them to packed RGB
+//! with libswscale and advertise the result as [`PixelFormat::Rgb24`]. The
+//! scaler runs with `BITEXACT | ACCURATE_RND` so a given file decodes to the
+//! same bytes on every run, which is the point of recorded input.
 
 use std::io;
 use std::path::Path;
@@ -26,8 +24,9 @@ use std::path::Path;
 use ffmpeg_next as ffmpeg;
 use ffmpeg::format::Pixel;
 use ffmpeg::media::Type;
+use ffmpeg::software::scaling::{Context as Scaler, Flags};
 
-use vision_core::{Frame, PixelFormat, yuv_to_rgb};
+use vision_core::{Frame, PixelFormat};
 
 use crate::source::FrameSource;
 
@@ -49,6 +48,10 @@ pub struct VideoFile {
     stream_index: usize,
     /// Reusable decode target; refilled by the decoder each frame.
     decoded: ffmpeg::frame::Video,
+    /// Lazily built on the first frame, once the decoded pixel format is known.
+    scaler: Option<Scaler>,
+    /// Reusable swscale output frame (RGB24, possibly with padded rows).
+    scaled: ffmpeg::frame::Video,
     /// Reusable RGB24 output, `width * height * 3` bytes, tightly packed.
     rgb: Vec<u8>,
     width: u32,
@@ -108,6 +111,8 @@ impl VideoFile {
             decoder,
             stream_index,
             decoded: ffmpeg::frame::Video::empty(),
+            scaler: None,
+            scaled: ffmpeg::frame::Video::new(Pixel::RGB24, width, height),
             rgb: vec![0; width as usize * height as usize * 3],
             width,
             height,
@@ -178,62 +183,35 @@ impl VideoFile {
         None
     }
 
-    /// Convert the just-decoded YUV frame into the packed-RGB [`Self::rgb`]
-    /// buffer. Handles the planar/semi-planar formats consumer cameras actually
-    /// produce; anything else errors with a transcode hint rather than rendering
-    /// garbage.
+    /// Convert the just-decoded frame, whatever its pixel format, into the
+    /// packed-RGB [`Self::rgb`] buffer using libswscale.
     fn convert(&mut self) -> io::Result<()> {
-        let w = self.width as usize;
-        let h = self.height as usize;
+        let (w, h) = (self.width, self.height);
+        let fmt = self.decoded.format();
 
-        match self.decoded.format() {
-            // Planar YUV: full-res Y plane (0), chroma planes U (1) and V (2)
-            // subsampled by `hsub`/`vsub` bits horizontally/vertically.
-            fmt @ (Pixel::YUV420P | Pixel::YUV422P | Pixel::YUV444P) => {
-                let (hsub, vsub) = match fmt {
-                    Pixel::YUV420P => (1, 1), // chroma at half width, half height
-                    Pixel::YUV422P => (1, 0), // half width, full height
-                    Pixel::YUV444P => (0, 0), // full resolution
-                    _ => unreachable!(),
-                };
-                let (yb, ys) = (self.decoded.data(0), self.decoded.stride(0));
-                let (ub, us) = (self.decoded.data(1), self.decoded.stride(1));
-                let (vb, vs) = (self.decoded.data(2), self.decoded.stride(2));
-                for y in 0..h {
-                    let cy = y >> vsub;
-                    for x in 0..w {
-                        let cx = x >> hsub;
-                        let yv = yb[y * ys + x];
-                        let uv = ub[cy * us + cx];
-                        let vv = vb[cy * vs + cx];
-                        let o = (y * w + x) * 3;
-                        self.rgb[o..o + 3].copy_from_slice(&yuv_to_rgb(yv, uv, vv));
-                    }
-                }
+        // `cached` rebuilds the scaler if the source format or size changes
+        // mid-stream; otherwise it is a cheap no-op.
+        let flags = Flags::BILINEAR | Flags::ACCURATE_RND | Flags::BITEXACT;
+        match &mut self.scaler {
+            Some(s) => s.cached(fmt, w, h, Pixel::RGB24, w, h, flags),
+            none => {
+                *none = Some(
+                    Scaler::get(fmt, w, h, Pixel::RGB24, w, h, flags)
+                        .map_err(|e| ff(e, "create scaler"))?,
+                );
             }
-            // NV12: full-res Y plane (0), one interleaved chroma plane (1) of
-            // [U, V] pairs at half width and half height.
-            Pixel::NV12 => {
-                let (yb, ys) = (self.decoded.data(0), self.decoded.stride(0));
-                let (cb, cs) = (self.decoded.data(1), self.decoded.stride(1));
-                for y in 0..h {
-                    let cy = y / 2;
-                    for x in 0..w {
-                        let cx = x / 2;
-                        let yv = yb[y * ys + x];
-                        let uv = cb[cy * cs + cx * 2];
-                        let vv = cb[cy * cs + cx * 2 + 1];
-                        let o = (y * w + x) * 3;
-                        self.rgb[o..o + 3].copy_from_slice(&yuv_to_rgb(yv, uv, vv));
-                    }
-                }
-            }
-            other => {
-                return Err(io::Error::other(format!(
-                    "unsupported decoded pixel format {other:?}; transcode first, e.g. \
-                     `ffmpeg -i in.mp4 -pix_fmt yuv420p out.mp4`"
-                )));
-            }
+        }
+        let scaler = self.scaler.as_mut().expect("scaler initialised above");
+        scaler
+            .run(&self.decoded, &mut self.scaled)
+            .map_err(|e| ff(e, "scale to rgb24"))?;
+
+        // The scaled frame's rows may be padded; copy them into the tight buffer.
+        let stride = self.scaled.stride(0);
+        let src = self.scaled.data(0);
+        let row = w as usize * 3;
+        for y in 0..h as usize {
+            self.rgb[y * row..(y + 1) * row].copy_from_slice(&src[y * stride..y * stride + row]);
         }
         Ok(())
     }

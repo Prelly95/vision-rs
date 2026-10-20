@@ -1,0 +1,9 @@
+[package]
+name = "image-sequence-demo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vision-io.workspace = true
+vision-app.workspace = true
+vision-core.workspace = true

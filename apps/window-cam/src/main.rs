@@ -11,9 +11,8 @@
 
 use std::io;
 
-use vision_core::{Blend, Overlay, SobelEdges};
+use vision_core::{Blend, Overlay, SobelEdges, Stats};
 use vision_io::V4l2Capture;
-use vision_app::Passthrough;
 
 fn main() {
     if let Err(e) = run() {
@@ -33,6 +32,6 @@ fn run() -> io::Result<()> {
 
     // Sobel edges composited over the live video: `Lighten` lets the bright
     // edge lines show through while the rest of the frame passes untouched.
-    let processor = Overlay::new(SobelEdges::default(), Blend::Lighten);
+    let processor = Overlay::new(Stats::new(SobelEdges::default()), Blend::Lighten);
     vision_app::run(capture, processor, "Window Cam")
 }
