@@ -7,3 +7,4 @@ edition.workspace = true
 vision-core.workspace = true
 vision-io.workspace = true
 minifb = "0.29"
+crossterm = "0.29"

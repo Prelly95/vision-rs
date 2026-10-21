@@ -1,5 +1,5 @@
 [package]
-name = "window-cam"
+name = "demo-vision"
 version.workspace = true
 edition.workspace = true
 
@@ -7,3 +7,4 @@ edition.workspace = true
 vision-io.workspace = true
 vision-app.workspace = true
 vision-core.workspace = true
+clap = { version = "4", features = ["derive"] }

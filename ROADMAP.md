@@ -118,10 +118,7 @@ vision-rs/
 │   ├── vision-slam/          # VO → SLAM
 │   └── vision-codec/         # compression + transport for FPV
 ├── apps/
-│   ├── ascii-cam/            # webcam → terminal (vision-io + vision-app)
-│   ├── window-cam/           # webcam → window, via the harness
-│   ├── video-player/         # video file → window (Passthrough), transport controls
-│   ├── edge-viz/             # video file → Sobel edges, the reference Processor demo
+│   ├── demo-vision/       # dev harness: pick source / processor / display from the CLI
 │   ├── flow-viz/
 │   ├── vo-demo/
 │   └── fpv-tx / fpv-rx/
@@ -195,7 +192,7 @@ self-contained, and unblocks the rest.
 
 ## Immediate next steps
 
-1. Scaffold the workspace: crate skeletons + port `ascii-cam` + a minifb window
+1. Scaffold the workspace: crate skeletons + port the ascii webcam demo + a minifb window
    renderer + the record/replay harness.
 2. Decide on pulling in `nalgebra` / `rayon` vs. from-scratch math.
 3. Get `vision-core` + `vision-io` + a windowed viewer working — a real canvas

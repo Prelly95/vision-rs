@@ -21,3 +21,12 @@ use crate::{Canvas, Frame};
 pub trait Processor {
     fn process(&mut self, input: &Frame<'_>, out: &mut Canvas);
 }
+
+/// Lets a runtime-chosen processor (`Box<dyn Processor>`) be used anywhere a
+/// concrete one is, including as the inner of [`Stats`](crate::Stats) or
+/// [`Overlay`](crate::Overlay).
+impl<P: Processor + ?Sized> Processor for Box<P> {
+    fn process(&mut self, input: &Frame<'_>, out: &mut Canvas) {
+        (**self).process(input, out)
+    }
+}

@@ -4,6 +4,15 @@
 
 No versions have been formally released yet. This section is organised by commit
 
+### Replace the demo apps with the `demo-vision` dev harness:
+
+- Added the `demo-vision` app: a clap CLI that picks the frame source, processor,
+  overlay, stats and display at run time.
+- Added `Box<dyn FrameSource>` and `Box<dyn Processor>` impls so those choices
+  can be made at run time.
+- Removed `ascii-cam`, `window-cam`, `video-player`, `edge-viz` and
+  `image-sequence-demo`. `demo-vision` covers all of them.
+
 ### Add image sequence source and stats processor:
 
 - Added the `image-sequence-demo` app and an image-sequence source in

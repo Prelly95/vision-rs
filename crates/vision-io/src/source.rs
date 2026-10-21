@@ -35,3 +35,20 @@ pub trait FrameSource {
         None
     }
 }
+
+/// Lets a runtime-chosen source (`Box<dyn FrameSource>`) drop into generic code
+/// such as the harness `run`.
+impl<S: FrameSource + ?Sized> FrameSource for Box<S> {
+    fn next_frame(&mut self) -> io::Result<Option<Frame<'_>>> {
+        (**self).next_frame()
+    }
+    fn width(&self) -> u32 {
+        (**self).width()
+    }
+    fn height(&self) -> u32 {
+        (**self).height()
+    }
+    fn target_fps(&self) -> Option<f64> {
+        (**self).target_fps()
+    }
+}

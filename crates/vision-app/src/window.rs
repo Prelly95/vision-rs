@@ -1,36 +1,14 @@
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 use std::io;
-use std::ops::ControlFlow;
 
 use vision_core::Frame;
 
-use crate::Display;
+use crate::{Controls, Display};
 
 // Re-exported so apps can name keys (for their own hotkeys) through vision-app
 // without taking a direct dependency on minifb -- the windowing backend stays an
 // implementation detail of this crate.
 pub use minifb::Key as WindowKey;
-
-/// Transport-control intent decoded from the window's key state as of the most
-/// recent [`render`](WindowDisplay::render) / [`pump`](WindowDisplay::pump) call.
-/// A small, app-neutral mapping of the controls the ROADMAP calls for (pause,
-/// single-step, quit) so a playback loop can read *what the user wants* instead
-/// of raw keycodes. Apps that need other keys still have the raw
-/// [`was_key_pressed`](WindowDisplay::was_key_pressed) / [`is_key_down`]
-/// helpers.
-///
-/// [`is_key_down`]: WindowDisplay::is_key_down
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Controls {
-    /// Space was pressed this frame: flip play/pause.
-    pub toggle_pause: bool,
-    /// Right arrow or N was pressed this frame: advance exactly one frame.
-    pub step: bool,
-    /// P or Left was pressed this frame: go back one frame.
-    pub step_back: bool,
-    /// The user asked to quit: window closed, or Q / Esc.
-    pub quit: bool,
-}
 
 pub struct WindowDisplay {
     window: Window,
@@ -114,7 +92,7 @@ impl WindowDisplay {
     /// Decode the standard transport controls from the current key state. Call
     /// after [`render`](Self::render) / [`pump`](Self::pump), which refresh that
     /// state. See [`Controls`].
-    pub fn controls(&self) -> Controls {
+    pub fn read_controls(&self) -> Controls {
         Controls {
             toggle_pause: self.was_key_pressed(Key::Space),
             step: self.was_key_pressed(Key::Right) || self.was_key_pressed(Key::N),
@@ -125,11 +103,19 @@ impl WindowDisplay {
 }
 
 impl Display for WindowDisplay {
-    fn show(&mut self, frame: &Frame<'_>) -> io::Result<ControlFlow<()>> {
-        self.render(frame)?;
-        if !self.window.is_open() || self.window.is_key_down(Key::Escape) {
-            return Ok(ControlFlow::Break(()));
-        }
-        Ok(ControlFlow::Continue(()))
+    fn show(&mut self, frame: &Frame<'_>) -> io::Result<()> {
+        self.render(frame)
+    }
+
+    fn idle(&mut self) -> io::Result<()> {
+        self.pump()
+    }
+
+    fn controls(&mut self) -> Controls {
+        self.read_controls()
+    }
+
+    fn set_target_fps(&mut self, fps: usize) {
+        WindowDisplay::set_target_fps(self, fps);
     }
 }

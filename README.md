@@ -10,7 +10,7 @@ areas (optical flow, structure from motion, visual SLAM, FPV video transport).
 - Rust toolchain with edition 2024 support.
 - Linux. The capture code talks to V4L2 through raw syscalls, so it does not
   build on other platforms yet.
-- A V4L2 webcam at `/dev/video0` to run `ascii-cam` and `window-cam`.
+- A V4L2 webcam at `/dev/video0` to use the `webcam` source of the `demo-vision` app.
 - FFmpeg development libraries (`libavcodec`, `libavformat`, `libavutil`, `libswscale`) and
   `clang`, to build `vision-io`. It uses them to decode video files. The
   `ffmpeg-next` version in `crates/vision-io/Cargo.toml` must match the major
@@ -37,10 +37,7 @@ reusable logic lives in a crate.
 
 | App | Role | Status |
 |-----|------|--------|
-| `ascii-cam` | webcam viewer in the terminal | implemented |
-| `window-cam` | webcam viewer in a window, with Sobel edges overlaid | implemented |
-| `video-player` | video file viewer in a window, with transport controls | implemented |
-| `edge-viz` | Sobel edge detector over a video file | implemented |
+| `demo-vision` | dev harness: any source, processor and display, chosen on the command line | implemented |
 | `flow-viz` | optical flow viewer | stub |
 | `vo-demo` | visual odometry demo | stub |
 | `fpv-tx` / `fpv-rx` | FPV video sender and receiver | stub |
@@ -106,21 +103,26 @@ The workspace has more than one binary, so name the app with `-p`. Use
 `--release`. A debug build is too slow for a smooth frame rate.
 
 ```
-cargo run --release -p ascii-cam
-cargo run --release -p window-cam
-cargo run --release -p video-player -- /path/to/video.mp4
-cargo run --release -p edge-viz -- /path/to/video.mp4
+cargo run --release -p demo-vision -- webcam
+cargo run --release -p demo-vision -- --proc sobel --overlay lighten --stats webcam
+cargo run --release -p demo-vision -- video /path/to/video.mp4
+cargo run --release -p demo-vision -- --display terminal webcam
+cargo run --release -p demo-vision -- images /path/to/png/dir
 ```
 
-- `ascii-cam` opens `/dev/video0`, negotiates 640x480 YUYV, and draws the video
-  in the terminal. Press `Ctrl+C` to quit. The renderer restores the cursor on
-  exit.
-- `window-cam` shows the same webcam in a window with Sobel edges blended over
-  it.
-- `video-player` plays any file FFmpeg can demux (mp4, mov, mkv, ...).
-- `edge-viz` shows the Sobel edges of a video file.
+`demo-vision` picks its pieces at run time. Run it with `--help` for the full list.
 
-The window apps share these controls:
+- Sources: `webcam` (`/dev/video0`, 640x480 by default), `video <path>` (any
+  file FFmpeg can demux) and `images <dir>` (a directory of PNG frames, such as
+  a KITTI `image_00/data` folder).
+- `--proc passthrough|sobel` picks the algorithm.
+- `--overlay alpha|lighten|add` blends the result over the original video.
+  `--alpha` sets the opacity for `alpha`.
+- `--stats` prints fps and processing time.
+- `--display window|terminal` picks the output. The terminal output restores the
+  cursor on exit.
+
+The `demo-vision` app uses these controls:
 
 | Key | Action |
 |-----|--------|
@@ -201,7 +203,7 @@ with the OXTS ground truth.
 - Add a new frame source: implement `vision_io::FrameSource` in `vision-io`. The
   display side does not change.
 - Add a new algorithm: implement `vision_core::Processor`, then pass it to
-  `vision_app::run`. See `edge-viz`.
+  `vision_app::run`. Then add a variant for it in `apps/demo-vision`.
 - Promote a stub to real code: fill in its crate, then build the matching app on
   top.
 - Put experiments in an `examples/` directory inside a crate before you promote

@@ -10,13 +10,15 @@
 //! on the wire when much of the image is static.
 
 use std::io::{self, Write};
-use std::ops::ControlFlow;
 use std::os::raw::{c_int, c_void};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::terminal;
 
 use vision_core::Frame;
 
-use crate::Display;
+use crate::{Controls, Display};
 
 // We only need ioctl here (for the window size); same fixed-3-arg trick as the
 // capture module -- see its header comment.
@@ -67,10 +69,18 @@ pub struct TerminalDisplay {
     out: String,        // reused scratch buffer, never shrinks
     last_instant: Option<Instant>,
     fps: f64,
+    interval: Option<Duration>, // pacing target set by `set_target_fps`
+    raw_mode: bool,             // we switched the tty to raw mode and must undo it
 }
 
 impl TerminalDisplay {
+    /// Creates the display and puts the terminal in raw mode so single keypresses
+    /// can be read as transport controls (restored on drop). Raw mode disables
+    /// the tty's Ctrl+C signal, so [`controls`](Display::controls) reports it as
+    /// `quit` instead -- a caller must poll `controls` to be able to exit. If
+    /// stdin isn't a tty, raw mode is skipped and no input is ever reported.
     pub fn new() -> Self {
+        let raw_mode = terminal::enable_raw_mode().is_ok();
         TerminalDisplay {
             cols: 0,
             rows: 0,
@@ -79,6 +89,8 @@ impl TerminalDisplay {
             out: String::new(),
             last_instant: None,
             fps: 0.0,
+            interval: None,
+            raw_mode,
         }
     }
 
@@ -110,7 +122,7 @@ impl Default for TerminalDisplay {
 }
 
 impl Display for TerminalDisplay {
-    fn show(&mut self, frame: &Frame<'_>) -> io::Result<ControlFlow<()>> {
+    fn show(&mut self, frame: &Frame<'_>) -> io::Result<()> {
         use std::fmt::Write as _;
 
         self.tick_fps();
@@ -238,8 +250,56 @@ impl Display for TerminalDisplay {
         let mut lock = stdout.lock();
         lock.write_all(self.out.as_bytes())?;
         lock.flush()?;
-        Ok(ControlFlow::Continue(()))
+        drop(lock);
+
+        // Pace to the target rate: tick_fps stamped the start of this frame, so
+        // sleep off whatever of the interval the render didn't use.
+        if let (Some(interval), Some(start)) = (self.interval, self.last_instant) {
+            if let Some(rest) = interval.checked_sub(start.elapsed()) {
+                std::thread::sleep(rest);
+            }
+        }
+        Ok(())
     }
+
+    fn idle(&mut self) -> io::Result<()> {
+        // Nothing to repaint; just don't spin while paused.
+        std::thread::sleep(self.interval.unwrap_or(Duration::from_millis(16)));
+        Ok(())
+    }
+
+    fn controls(&mut self) -> Controls {
+        let mut c = Controls::default();
+        if !self.raw_mode {
+            return c;
+        }
+        // Drain everything queued since the last call, without blocking.
+        while event::poll(Duration::ZERO).unwrap_or(false) {
+            let Ok(Event::Key(key)) = event::read() else { continue };
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            match key.code {
+                KeyCode::Char(' ') => c.toggle_pause = true,
+                KeyCode::Right | KeyCode::Char('n') => c.step = true,
+                KeyCode::Left | KeyCode::Char('p') => c.step_back = true,
+                KeyCode::Esc | KeyCode::Char('q') => c.quit = true,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    c.quit = true
+                }
+                _ => {}
+            }
+        }
+        c
+    }
+
+    fn set_target_fps(&mut self, fps: usize) {
+        self.interval = (fps > 0).then(|| Duration::from_secs_f64(1.0 / fps as f64));
+    }
+
+    // The terminal owns the screen; a println would corrupt the frame. The stats
+    // line is the only text we draw.
+    fn notice(&mut self, _msg: &str) {}
 }
 
 impl Drop for TerminalDisplay {
@@ -249,5 +309,8 @@ impl Drop for TerminalDisplay {
         let mut lock = stdout.lock();
         let _ = lock.write_all(b"\x1B[0m\x1B[?25h");
         let _ = lock.flush();
+        if self.raw_mode {
+            let _ = terminal::disable_raw_mode();
+        }
     }
 }
